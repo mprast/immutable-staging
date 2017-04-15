@@ -1,0 +1,30 @@
+{
+    "extends":["tslint:recommended", "tslint-eslint-rules"],
+    "rules": {
+        "indent": [true, 4],
+        "linebreak-style": [true, "unix"],
+        "quotemark": [true, "double", "avoid-escape"],
+        "semicolon": [true, "always"],
+        /* 
+        the typescript compiler will catch this - we dont 
+        need to check for it in the linter. Plus it will 
+        auto-ignore vars that start with _!
+        "no-unused-vars": [true, {
+                                    "argsIgnorePattern": "^_",
+                                    "varsIgnorePattern": "React"
+                                 }],
+        */
+        "no-var-keyword": true,
+        "array-type": [true, "generic"],
+        "variable-name": [true, "ban-keywords", "allow-leading-underscore", "check-format"],
+        "whitespace": false,
+        "prefer-for-of": true,
+        "ordered-imports": false,
+        "object-literal-sort-keys": false,
+        "forin": false,
+        /* this will trigger on all JSX Stateless components 
+           and it gets annoying */
+        "variable-name": false,
+        "one-variable-per-declaration": false
+    }
+}

@@ -1,0 +1,16 @@
+{
+  "compilerOptions": {
+      "strictNullChecks": true,
+      "noImplicitReturns": true,
+      "noImplicitAny": true,
+      "suppressImplicitAnyIndexErrors": true,
+      "target": "es6",
+      "module": "commonjs",
+      "baseUrl": ".",
+      "jsx": "preserve"
+  },
+  "awesomeTypescriptLoaderOptions": {
+      "useBabel": true,
+      "useCache": true
+  }
+}
