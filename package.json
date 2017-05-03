@@ -5,5 +5,13 @@
   "main": "index.js",
   "repository": "git@github.com:mprast/immutable-staging.git",
   "author": "Matt Prast <mprast@gmail.com>",
-  "license": "MIT"
+  "license": "MIT",
+  "devDependencies": {
+    "@types/lodash.set": "^4.3.2",
+    "jest": "^19.0.2",
+    "typescript": "^2.2.2"
+  },
+  "dependencies": {
+    "lodash.set": "^4.3.2"
+  }
 }
