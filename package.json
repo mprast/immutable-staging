@@ -9,9 +9,28 @@
   "devDependencies": {
     "@types/lodash.set": "^4.3.2",
     "jest": "^19.0.2",
+    "tslint": "^5.1.0",
+    "tslint-eslint-rules": "^4.0.0",
     "typescript": "^2.2.2"
   },
   "dependencies": {
     "lodash.set": "^4.3.2"
+  },
+  "scripts": {
+    "test": "NODE_PATH=. yarn jest",
+    "testd": "NODE_PATH=. node --inspect --debug-brk node_modules/.bin/jest --runInBand --env jest-environment-node-debug"
+  },
+  "jest": {
+    "moduleFileExtensions": [
+      "ts",
+      "tsx",
+      "js"
+    ],
+    "transform": {
+      "^.+\\.(ts|tsx)$": "<rootDir>/test/jest_typescript_preprocessor.js"
+    },
+    "testMatch": [
+      "**/test/**/*.test.(ts|tsx)"
+    ]
   }
 }
