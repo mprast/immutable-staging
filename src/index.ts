@@ -1,52 +1,74 @@
 import set = require("lodash.set");
-export function applyUpdate<T>(imObject: T, updateFunction: (readObj: T, writeObj: T) => void): T {
-    const [readObj, writeObj] = buildStagingObjects(imObject);
-    updateFunction(readObj, writeObj);
-    return resolveStagingObject(writeObj, imObject);
+import merge = require("lodash.merge");
+export function applyUpdate<T>(imObject: T, updateFunction: (stagingProxy: T) => void): T {
+    const proxy = buildStagingProxy({}, "", imObject);
+    updateFunction(proxy);
+    return resolveStagingObject(proxy, imObject);
 }
 
-function buildStagingObjects<T>(object: T): Array<T> {
-    // we'll close over this. it'll be shared storage between the read
-    // object and the write object
-    const writtenProps: any = {};
-
-    const reads = new Proxy(object, {
+function buildStagingProxy(writeCache: any, prefix: string, object: any): any {
+    return new Proxy(object, {
         get(target, property, receiver) {
-            if(property in writtenProps) {
-                return writtenProps[property];
+            // we should be able to retrieve the props
+            // if we have the writes object
+            if (property === "_immutableStagingWriteCache") {
+                return writeCache;
             }
 
-            // Typescript should ensure that this property
-            // actually exists
-            return target[property];
-        },
-    });
-
-    const writes: any = new Proxy(object, {
-        get(target, property, receiver) {
-            if(!(property in writtenProps)) {
-                // Typescript should ensure that the property
-                // actually exists
-
-                // not that this is a shallow clone
-                writtenProps[property] = Object.assign({}, target[property]);
+            // we need an escape hatch so that we can
+            // update parts of the object using other parts of the
+            // object.
+            if (property === "_immutableStagingWrappedObject" ) {
+                return target;
             }
 
-            return writtenProps[property];
+            // if the function modifies its 'this' variable we want to
+            // make sure to record that, so we need to bind 'this' to
+            // the proxy
+            if (typeof target[property] === "function") {
+                return target[property].bind(receiver);
+            }
+
+            const qualifiedProp = `${prefix}.${property}`;
+            if(qualifiedProp in writeCache) {
+                return writeCache[qualifiedProp];
+            } else {
+                return buildStagingProxy(writeCache, qualifiedProp, target[property]);
+            }
         },
         set(target, property, value, receiver) {
-            writtenProps[property] = property;
+            const qualifiedProp = `${prefix}.${property}`;
+            if (typeof target[property] === "function") {
+                throw Error(`${qualifiedProp} is a function; you can't assign to ` +
+                    `functions while updating an object using immutable-staging.`);
+            }
+
+            if (property === "_immutableStagingWriteCache") {
+                throw Error("'_immutableStagingWriteCache' is a protected property name; " +
+                    "you shouldn't assign to it.");
+            }
+
+            if (property === "_immutableStagingWrappedObject") {
+                throw Error("'_immutableStagingWrappedObject' is a protected property name; " +
+                    "you shouldn't assign to it.");
+            }
+
+            // sometimes we want to update parts of the object
+            // using other parts of the object. in those cases we
+            // need to be sure to remove the proxy.
+            if ("_immutableStagingWrappedObject" in value) {
+                writeCache[qualifiedProp] = value._immutableStagingWrappedObject;
+                return true;
+            }
+
+            writeCache[qualifiedProp] = value;
             return true;
         },
     });
-
-    writes._writtenProps = writtenProps;
-
-    return [reads, writes as T];
 }
 
-function resolveStagingObject<T>(writes: T, object: T): T {
-    const writtenProps = (writes as any)._writtenProps;
+function resolveStagingObject<T>(stagingProxy: T, object: T): T {
+    const writtenProps = (stagingProxy as any)._immutableStagingWriteCache;
     // order alphabetically. that way if one string is
     // a prefix of another, it'll be right before it, and
     // we can catch that case without doing multiple
@@ -57,7 +79,7 @@ function resolveStagingObject<T>(writes: T, object: T): T {
     // both a node and its children, and is probably not
     // what the user intended (it might break the code
     // too!)
-    const propNames = Object.keys(writes).sort();
+    const propNames = Object.keys(stagingProxy).sort();
     // fudging it a little here; assuming no prop string
     // can start with a space
     let prevName = " ";
@@ -75,5 +97,6 @@ function resolveStagingObject<T>(writes: T, object: T): T {
         // since we don't want to clone it for every property.
         set(objectChanges, name, writtenProps[name]);
     });
-    return Object.assign(object, objectChanges);
+    // this also comes from lodash
+    return merge(object, objectChanges);
 }

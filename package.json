@@ -9,11 +9,14 @@
   "devDependencies": {
     "@types/lodash.set": "^4.3.2",
     "jest": "^19.0.2",
+    "jest-environment-node-debug": "^2.0.0",
     "tslint": "^5.1.0",
     "tslint-eslint-rules": "^4.0.0",
     "typescript": "^2.2.2"
   },
   "dependencies": {
+    "@types/lodash.merge": "^4.6.2",
+    "lodash.merge": "^4.6.0",
     "lodash.set": "^4.3.2"
   },
   "scripts": {
