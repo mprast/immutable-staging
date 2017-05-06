@@ -47,13 +47,13 @@ function buildStagingProxy(writeCache: any, object: any, prefix: string): any {
                     `functions while updating an object using immutable-staging.`);
             }
 
-            if (property === "_immutableStagingWriteCache") {
-                throw Error("'_immutableStagingWriteCache' is a protected property name; " +
-                    "you shouldn't assign to it.");
-            }
+            // Typescript doesn't recognize "includes"...?
+            const protectedProperties: any = ["_immutableStagingWriteCache",
+                                         "_immutableStagingWrappedObject",
+                                         "_immutableStagingConvertArray"];
 
-            if (property === "_immutableStagingWrappedObject") {
-                throw Error("'_immutableStagingWrappedObject' is a protected property name; " +
+            if (protectedProperties.includes(property)) {
+                throw Error(`'${property}' is a protected property name; ` +
                     "you shouldn't assign to it.");
             }
 
@@ -110,6 +110,16 @@ function maintainArrayInvariant(writeCache: any,
                                 property: PropertyKey,
                                 prefix: string,
                                 value: any) {
+    // this is definitely a hack, but we need an extra bit to
+    // indicate what's an array and what's not, since there's
+    // no way to assign an object to an array and have the result
+    // be an array. we'll use this in the merge function to
+    // coerce mutated arrays back into arrays. a nice property of
+    // this approach is that it allows us to assign objects to
+    // properties that currently hold arrays without things breaking
+    // down.
+    writeCache[`${prefix}_immutableStagingConvertArray`] = true;
+
     const qLength = `${prefix}length`;
     const index = parseInt((property as string), 10);
     const currentLen = qLength in writeCache ? writeCache[qLength] : target.length;
@@ -125,6 +135,9 @@ function maintainArrayInvariant(writeCache: any,
                 delete writeCache[`${prefix}${i}`];
             }
         }
+    } else {
+        throw Error(`A property (${property}) that's not an integer or 'length' ` +
+                    `was set on an array (${prefix}${property}).`);
     }
 }
 
@@ -170,9 +183,14 @@ export function merge(objectOne: any, objectTwo: any) {
 
     const merged = Object.assign({}, objectOne);
     Object.getOwnPropertyNames(objectTwo).forEach((mergeProp: string) => {
-        if(typeof objectOne[mergeProp] === "object" &&
+        if (typeof objectOne[mergeProp] === "object" &&
             typeof objectTwo[mergeProp] === "object") {
             merged[mergeProp] = merge(objectOne[mergeProp], objectTwo[mergeProp]);
+
+            if (merged[mergeProp]._immutableStagingConvertArray) {
+                delete merged[mergeProp]._immutableStagingConvertArray;
+                merged[mergeProp] = Array.from(merged[mergeProp]);
+            }
         } else {
             merged[mergeProp] = objectTwo[mergeProp];
         }
