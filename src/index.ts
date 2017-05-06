@@ -57,6 +57,10 @@ function buildStagingProxy(writeCache: any, object: any, prefix: string): any {
                     "you shouldn't assign to it.");
             }
 
+            if (Array.isArray(target)) {
+                maintainArrayInvariant(writeCache, target, property, prefix, value);
+            }
+
             // sometimes we want to update parts of the object
             // using other parts of the object. in those cases we
             // need to be sure to remove the proxy.
@@ -95,7 +99,36 @@ function buildStagingProxy(writeCache: any, object: any, prefix: string): any {
     });
 }
 
-function resolveStagingObject<T>(stagingProxy: T, object: T): T {
+// unfortunately we have to emulate some aspects of the javascript
+// engine when it comes to things like the "length" property. in
+// particular, length always should be greater than or equal to n,
+// where n is 1 + the greatest integral property of the Array.
+// as such, setting length to less than n should remove properties
+// from the array until the invariant is true again.
+function maintainArrayInvariant(writeCache: any,
+                                target: Array<any>,
+                                property: PropertyKey,
+                                prefix: string,
+                                value: any) {
+    const qLength = `${prefix}length`;
+    const index = parseInt((property as string), 10);
+    const currentLen = qLength in writeCache ? writeCache[qLength] : target.length;
+    if (!Number.isNaN(index)) {
+        const newLen = index + 1;
+        if (newLen > currentLen) {
+            writeCache[qLength] = newLen;
+        }
+    } else if (property === "length") {
+        const newLen = value;
+        if (newLen < currentLen) {
+            for(let i = newLen; i < currentLen; i++) {
+                delete writeCache[`${prefix}${i}`];
+            }
+        }
+    }
+}
+
+function resolveStagingObject<T>(stagingProxy: T, object: T) {
     const writtenProps = (stagingProxy as any)._immutableStagingWriteCache;
     // order alphabetically. that way if one string is
     // a prefix of another, it'll be right before it, and
@@ -130,7 +163,7 @@ function resolveStagingObject<T>(stagingProxy: T, object: T): T {
 }
 
 // exported for testing
-export function merge(objectOne: any, objectTwo: any): any {
+export function merge(objectOne: any, objectTwo: any) {
     if (Object.keys(objectTwo).length === 0) {
         return objectOne;
     }
