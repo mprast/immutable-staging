@@ -14,6 +14,12 @@
   dependencies:
     "@types/lodash" "*"
 
+"@types/lodash.union@^4.6.2":
+  version "4.6.2"
+  resolved "https://registry.yarnpkg.com/@types/lodash.union/-/lodash.union-4.6.2.tgz#cce8a74d76202eb7da59da6e6d731b7232abd45e"
+  dependencies:
+    "@types/lodash" "*"
+
 "@types/lodash@*":
   version "4.14.63"
   resolved "https://registry.yarnpkg.com/@types/lodash/-/lodash-4.14.63.tgz#5ac475f55bfdc62bc88c4239dbc482f2f3bead93"
@@ -1314,6 +1320,10 @@ lodash.merge@^4.6.0:
 lodash.set@^4.3.2:
   version "4.3.2"
   resolved "https://registry.yarnpkg.com/lodash.set/-/lodash.set-4.3.2.tgz#d8757b1da807dde24816b0d6a84bea1a76230b23"
+
+lodash.union@^4.6.0:
+  version "4.6.0"
+  resolved "https://registry.yarnpkg.com/lodash.union/-/lodash.union-4.6.0.tgz#48bb5088409f16f1821666641c44dd1aaae3cd88"
 
 lodash@^4.14.0, lodash@^4.2.0:
   version "4.17.4"
