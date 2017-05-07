@@ -24,6 +24,12 @@ function buildStagingProxy(writeCache: any, object: any, prefix: string): any {
                 return target;
             }
 
+            // we're making the assumption here that users will
+            // never assign to an object via symbols
+            if (typeof property === "symbol") {
+                return target[property];
+            }
+
             const qualifiedProp = `${prefix}${property}`;
 
             if(qualifiedProp in writeCache) {
