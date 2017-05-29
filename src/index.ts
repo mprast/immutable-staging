@@ -100,7 +100,8 @@ function buildStagingProxy(writeCache: any, object: any, prefix: string): any {
         },
         // we need this so the "(prop in object)" construct will work
         has(target, prop) {
-            return (prop in target || `${prefix}${prop}` in writeCache);
+            return (prop in target || `${prefix}${prop}` in writeCache ||
+                    prop === "_immutableStagingWrappedObject");
         },
     });
 }
