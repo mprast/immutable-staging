@@ -7,7 +7,6 @@
   "author": "Matt Prast <mprast@gmail.com>",
   "license": "MIT",
   "devDependencies": {
-    "@types/lodash.set": "^4.3.2",
     "jest": "^19.0.2",
     "jest-environment-node-debug": "^2.0.0",
     "tslint": "^5.1.0",
@@ -18,7 +17,6 @@
     "@types/lodash.merge": "^4.6.2",
     "@types/lodash.union": "^4.6.2",
     "lodash.merge": "^4.6.0",
-    "lodash.set": "^4.3.2",
     "lodash.union": "^4.6.0"
   },
   "scripts": {

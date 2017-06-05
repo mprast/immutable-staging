@@ -1,4 +1,4 @@
-import {applyUpdate, merge} from "src/index";
+import {applyUpdate, applyWrites} from "src/index";
 
 // declare jest-imported globals so we don't
 // get errors from typescript
@@ -6,12 +6,16 @@ declare const test: any;
 declare const expect: any;
 declare const describe: any;
 
+// don't take these interfaces as gospel; they're
+// really here to just guard against stupid typoes.
+// they can be removed if necessary.
 interface SimpleObjectState {
     one: {
         three: number;
         four: string;
         nestedObject: {
-            five: string;
+            five?: string;
+            newGuy?: string;
         };
     };
     two: {
@@ -19,9 +23,7 @@ interface SimpleObjectState {
     };
     seven: string;
     eight?: string;
-    nine?: {
-        five: string;
-    };
+    nine?: any;
 }
 
 function getSimpleObjectState(): SimpleObjectState {
@@ -79,10 +81,7 @@ interface DagState {
         };
     };
     topLevelThree: {
-        object: {
-            three: string;
-            four: string;
-        };
+        object: any;
     };
     topLevelFour: {
         object: {
@@ -208,11 +207,6 @@ describe("applyUpdate", () => {
         expect(newState.secondArray).toEqual(["same", "same", "same", "this is a third thing"]);
     });
 
-    // TODO (mprast): sketch this out and at least see if it's feasible
-    // test("can handle DAGs, and not just trees", () => {
-
-    // });
-
     test("can update part of the object using another part of the object", () => {
         const state = getSimpleObjectState();
         const newState = applyUpdate<SimpleObjectState>(state, (stagObj) => {
@@ -233,16 +227,18 @@ describe("applyUpdate", () => {
         expect(newState.two.six).toBe("updated");
     });
 
-    test("fails if both a parent and its children are written to", () => {
+    test("can handle writes to both a parent and a child", () => {
         const state = getSimpleObjectState();
-        expect(() => {
-            applyUpdate<SimpleObjectState>(state, (stagObj) => {
-                stagObj.one.nestedObject.five = "another string";
-                stagObj.one.nestedObject = {
-                    five: "new five",
-                };
-            });
-        }).toThrow();
+        const newState = applyUpdate<SimpleObjectState>(state, (stagObj) => {
+            stagObj.one.nestedObject.five = "another string";
+            stagObj.one.nestedObject = {
+                newGuy: "I'm the new guy",
+            };
+        });
+
+        expect(newState.one).not.toBe(state.one);
+        expect(newState.one.nestedObject.five).toBe(undefined);
+        expect(newState.one.nestedObject.newGuy).toBe("I'm the new guy");
     });
 
     test("returns new values for written properties immediately", () => {
@@ -287,24 +283,78 @@ describe("applyUpdate", () => {
         });
         expect(newState.two.six.ten).toBe(2000);
     });
+
+    test("handles updates correctly on a DAG, and not just a tree", () => {
+        const state = getDagState();
+        const newState = applyUpdate<DagState>(state, (stagObj) => {
+            stagObj.topLevelOne.object.two = "I'm new";
+        });
+
+        expect(newState).not.toBe(state);
+        expect(newState.topLevelOne).not.toBe(state.topLevelOne);
+        expect(newState.topLevelOne.object.two).toBe("I'm new");
+        expect(newState.topLevelTwo).not.toBe(state.topLevelTwo);
+        expect(newState.topLevelTwo.object.two).toBe("I'm new");
+
+        expect(newState.topLevelThree).toBe(state.topLevelThree);
+        expect(newState.topLevelFour).toBe(state.topLevelFour);
+    });
+
+    test("will carry updates over when part of a DAG is reassigned to itself", () => {
+        const state = getDagState();
+        const newState = applyUpdate<DagState>(state, (stagObj) => {
+            stagObj.topLevelThree.object = stagObj.topLevelOne.object;
+            stagObj.topLevelThree.object.two = "I'm new";
+        });
+
+        expect(newState).not.toBe(state);
+        expect(newState.topLevelOne).not.toBe(state.topLevelOne);
+        expect(newState.topLevelOne.object.two).toBe("I'm new");
+        expect(newState.topLevelTwo).not.toBe(state.topLevelTwo);
+        expect(newState.topLevelTwo.object.two).toBe("I'm new");
+        expect(newState.topLevelThree).not.toBe(state.topLevelThree);
+        expect(newState.topLevelThree.object.two).toBe("I'm new");
+
+        expect(newState.topLevelFour).toBe(state.topLevelFour);
+    });
+
+    test("will carry updates when a DAG is reassigned to itself via a 'normal' object", () => {
+        const state = getDagState();
+        const newState = applyUpdate<DagState>(state, (stagObj) => {
+            stagObj.topLevelThree.object = {
+                                               newField: stagObj.topLevelOne.object,
+                                           };
+            stagObj.topLevelOne.object.two = "I'm new";
+        });
+
+        expect(newState).not.toBe(state);
+        expect(newState.topLevelOne).not.toBe(state.topLevelOne);
+        expect(newState.topLevelOne.object.two).toBe("I'm new");
+        expect(newState.topLevelTwo).not.toBe(state.topLevelTwo);
+        expect(newState.topLevelTwo.object.two).toBe("I'm new");
+        expect(newState.topLevelThree).not.toBe(state.topLevelThree);
+        expect(newState.topLevelThree.object.newField).toBe(newState.topLevelOne.object);
+
+        expect(newState.topLevelFour).toBe(state.topLevelFour);
+    });
 });
 
-describe("merge", () => {
+describe("applyWrites", () => {
     test("doesn't change an object on an empty merge", () => {
         const state = getSimpleObjectState();
-        const newState = merge(state, {});
+        const newState = applyWrites(state, new WeakMap<{}, {}>(), new WeakMap<{}, {}>());
         expect(state).toBe(newState);
     });
 
     test("reassigns object hierarchy, but only changes mutated paths", () => {
         const state = getSimpleObjectState();
-        const newState = merge(state, {
-            one: {
-                three: 20,
-            },
-            seven: "eight is great",
-            eight: "I'm great",
-        });
+        const changes = new WeakMap<{}, {}>();
+        changes.set(state.one, {three: 20});
+        changes.set(state, {
+                                seven: "eight is great",
+                                eight: "I'm great",
+                           });
+        const newState = applyWrites(state, changes, new WeakMap<{}, {}>());
         expect(newState).not.toBe(state);
         expect(newState.one).not.toBe(state.one);
         expect(newState.one.nestedObject).toBe(state.one.nestedObject);
@@ -317,14 +367,62 @@ describe("merge", () => {
 
     test("converts objects with _immutableStagingConvertArray set to arrays", () => {
         const state = getArrayState();
-        const newState = merge(state, {
-            array: {
-                1: "I'm new",
-                _immutableStagingConvertArray: true,
-            },
-        });
-
+        const changes = new WeakMap<{}, {}>();
+        const newArray = {
+                            1: "I'm new",
+                            _immutableStagingConvertArray: true,
+                         };
+        changes.set(newArray, newArray);
+        changes.set(state, {
+                               array: newArray,
+                           });
+        const newState = applyWrites(state, changes, new WeakMap<{}, {}>());
         expect(Array.isArray(newState.array)).toBe(true);
     });
 
+    test("carries changes over newly created dag links", () => {
+        const state = getSimpleObjectState();
+        const changes = new WeakMap<{}, {}>();
+        changes.set(state.two, {
+                                  six: state.one.nestedObject,
+                               });
+        changes.set(state.one.nestedObject, {
+                                                five: "I'm changed",
+                                            });
+
+        const newState = applyWrites(state, changes, new WeakMap<{}, {}>());
+        expect(newState).not.toBe(state);
+
+        expect(newState.one).not.toBe(state.one);
+        expect(newState.one.nestedObject).not.toBe(state.one.nestedObject);
+        expect(newState.one.nestedObject.five).toBe("I'm changed");
+
+        expect(newState.two).not.toBe(state.two);
+        expect(newState.two.six).toBe(newState.one.nestedObject);
+
+        expect(newState.seven).toBe(state.seven);
+    });
+
+    test("updates all paths to changed objects", () => {
+        const state = getDagState();
+        const changes = new WeakMap<{}, {}>();
+        changes.set(state.topLevelOne.object, {
+                                                  two: "I'm changed",
+                                              });
+
+        const newState = applyWrites(state, changes, new WeakMap<{}, {}>());
+        expect(newState).not.toBe(state);
+
+        expect(newState.topLevelOne).not.toBe(state.topLevelOne);
+        expect(newState.topLevelOne.object).not.toBe(state.topLevelOne.object);
+        expect(newState.topLevelOne.object.one).toBe(state.topLevelOne.object.one);
+        expect(newState.topLevelOne.object.two).toBe("I'm changed");
+
+        expect(newState.topLevelTwo).not.toBe(state.topLevelTwo);
+        expect(newState.topLevelTwo.object).toBe(newState.topLevelOne.object);
+
+        expect(newState.topLevelThree).toBe(state.topLevelThree);
+        expect(newState.topLevelFour).toBe(state.topLevelFour);
+    });
 });
+

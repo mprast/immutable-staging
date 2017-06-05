@@ -1,13 +1,17 @@
-import set = require("lodash.set");
 import union = require("lodash.union");
 
 export function applyUpdate<T>(imObject: T, updateFunction: (stagingProxy: T) => void): T {
-    const proxy = buildStagingProxy({}, imObject, "");
+    const proxy = buildStagingProxy(new WeakMap<{}, {}>(), imObject);
     updateFunction(proxy);
     return resolveStagingObject(proxy, imObject);
 }
 
-function buildStagingProxy(writeCache: any, object: any, prefix: string): any {
+// here the writeCache will store changes to objects. we want to key the changes
+// on the id of the object itself. we will use this cache later when we walk
+// the object graph; this will allow us to apply changes to object graphs that
+// are DAGs and not just trees. Changes to nested _tracked_ objects will be stored
+// under different entries in the writeCache.
+function buildStagingProxy(writeCache: WeakMap<{}, {}>, object: any): any {
     return new Proxy(object, {
         // implement "in" on the proxy
         get(target, property, receiver) {
@@ -25,17 +29,15 @@ function buildStagingProxy(writeCache: any, object: any, prefix: string): any {
             }
 
             // we're making the assumption here that users will
-            // never assign to an object via symbols
+            // never *assign* to an object via symbols
             if (typeof property === "symbol") {
                 return target[property];
             }
 
-            const qualifiedProp = `${prefix}${property}`;
-
-            if(qualifiedProp in writeCache) {
-                return writeCache[qualifiedProp];
+            if(property in (writeCache.get(target) || {})) {
+                return writeCache.get(target)![property];
             } else if (typeof target[property] === "object") {
-                return buildStagingProxy(writeCache, target[property], qualifiedProp + ".");
+                return buildStagingProxy(writeCache, target[property]);
             } else if (typeof target[property] === "function") {
                 // if the function modifies its 'this' variable we want to
                 // make sure to record that, so we need to bind 'this' to
@@ -46,62 +48,55 @@ function buildStagingProxy(writeCache: any, object: any, prefix: string): any {
             }
         },
         set(target, property, value, receiver) {
-            const qualifiedProp = `${prefix}${property}`;
-
             if (typeof target[property] === "function") {
-                throw Error(`${qualifiedProp} is a function; you can't assign to ` +
+                throw Error(`${property} is a function; you can't assign to ` +
                     `functions while updating an object using immutable-staging.`);
             }
 
             // Typescript doesn't recognize "includes"...?
             const protectedProperties: any = ["_immutableStagingWriteCache",
-                                         "_immutableStagingWrappedObject",
-                                         "_immutableStagingConvertArray"];
+                "_immutableStagingWrappedObject",
+                "_immutableStagingConvertArray"];
 
             if (protectedProperties.includes(property)) {
                 throw Error(`'${property}' is a protected property name; ` +
                     "you shouldn't assign to it.");
             }
 
+            // note that value might be a StagingProxy itself. that's
+            // okay though, we just have to be sure to unwrap it when
+            // we merge the changes back into the object graph
+            if (!writeCache.has(target)) {
+                writeCache.set(target, {});
+            }
+            writeCache.get(target)![property] = value;
+
             if (Array.isArray(target)) {
-                maintainArrayInvariant(writeCache, target, property, prefix, value);
+                maintainArrayInvariant(writeCache, target, property, value);
             }
 
-            // sometimes we want to update parts of the object
-            // using other parts of the object. in those cases we
-            // need to be sure to remove the proxy.
-            if (typeof value === "object" && "_immutableStagingWrappedObject" in value) {
-                writeCache[qualifiedProp] = value._immutableStagingWrappedObject;
-                return true;
-            }
-
-            writeCache[qualifiedProp] = value;
             return true;
         },
         // we need this so that Object.keys() will work
         ownKeys(target) {
-            const keyStartsWith = (key: string) => {
-                return key.length > prefix.length && key.startsWith(prefix);
-            };
-            const qWrittenKeys = Object.keys(writeCache).filter(keyStartsWith);
-            const writtenKeys = qWrittenKeys.map((key: string) => key.slice(prefix.length));
             // this is lodash union
-            return union(Object.getOwnPropertyNames(target), writtenKeys);
+            return union(Object.getOwnPropertyNames(target),
+                         Object.keys(writeCache.get(target) || {}));
         },
         // we need this so that ownKeys will work :P
         getOwnPropertyDescriptor(target, prop) {
             // make sure we only return prop descriptors for properties that
             // actually belong to this object.
-            if (`${prefix}${prop}` in writeCache && (prop as string).indexOf(".") === -1) {
-                return Object.getOwnPropertyDescriptor(writeCache, `${prefix}${prop}`);
+            if (prop in (writeCache.get(target) || {})) {
+                return Object.getOwnPropertyDescriptor(writeCache.get(target), prop);
             } else {
                 return Object.getOwnPropertyDescriptor(object, prop);
             }
         },
         // we need this so the "(prop in object)" construct will work
         has(target, prop) {
-            return (prop in target || `${prefix}${prop}` in writeCache ||
-                    prop === "_immutableStagingWrappedObject");
+            return (prop in target || prop in (writeCache.get(target) || {}) ||
+                prop === "_immutableStagingWrappedObject");
         },
     });
 }
@@ -115,7 +110,6 @@ function buildStagingProxy(writeCache: any, object: any, prefix: string): any {
 function maintainArrayInvariant(writeCache: any,
                                 target: Array<any>,
                                 property: PropertyKey,
-                                prefix: string,
                                 value: any) {
     // this is definitely a hack, but we need an extra bit to
     // indicate what's an array and what's not, since there's
@@ -125,83 +119,83 @@ function maintainArrayInvariant(writeCache: any,
     // this approach is that it allows us to assign objects to
     // properties that currently hold arrays without things breaking
     // down.
-    writeCache[`${prefix}_immutableStagingConvertArray`] = true;
+    writeCache.get(target)[`_immutableStagingConvertArray`] = true;
 
-    const qLength = `${prefix}length`;
     const index = parseInt((property as string), 10);
-    const currentLen = qLength in writeCache ? writeCache[qLength] : target.length;
+    const currentLen = "length" in writeCache.get(target) ?
+                            writeCache.get(target).length : target.length;
     if (!Number.isNaN(index)) {
         const newLen = index + 1;
         if (newLen > currentLen) {
-            writeCache[qLength] = newLen;
+            writeCache.get(target).length = newLen;
         }
     } else if (property === "length") {
         const newLen = value;
         if (newLen < currentLen) {
             for(let i = newLen; i < currentLen; i++) {
-                delete writeCache[`${prefix}${i}`];
+                delete writeCache.get(target)[i];
             }
         }
     } else {
         throw Error(`A property (${property}) that's not an integer or 'length' ` +
-                    `was set on an array (${prefix}${property}).`);
+            `was set on an array (items ${target.slice(0,5)}...).`);
     }
 }
 
 function resolveStagingObject<T>(stagingProxy: T, object: T) {
-    const writtenProps = (stagingProxy as any)._immutableStagingWriteCache;
-    // order alphabetically. that way if one string is
-    // a prefix of another, it'll be right before it, and
-    // we can catch that case without doing multiple
-    // passes.
-    //
-    // we want to throw when one string is a prefix of
-    // another, since it doesn't make sense to replace
-    // both a node and its children, and is probably not
-    // what the user intended (it might break the code
-    // too!)
-    const propNames = Object.keys(writtenProps).sort();
-    // fudging it a little here; assuming no prop string
-    // can start with a space
-    let prevName = " ";
-    const objectChanges = {};
-    propNames.forEach((name) => {
-        if(name.startsWith(prevName)) {
-            throw Error(`Property ${prevName} was assigned to, but (at least) its ` +
-                `child ${name} was assigned to beforehand. This can cause incorrect ` +
-                `behavior. If you want to write to both the parent and the child, please ` +
-                `write to the parent first.`);
-        }
-        prevName = name;
+    const writeCache = (stagingProxy as any)._immutableStagingWriteCache;
 
-        // set function comes from lodash - mutates the object
-        // since we don't want to clone it for every property.
-        set(objectChanges, name, writtenProps[name]);
-    });
-
-    return merge(object, objectChanges);
+    return applyWrites(object, writeCache, new WeakMap<{}, {}>());
 }
 
-// exported for testing
-export function merge(objectOne: any, objectTwo: any) {
-    if (Object.keys(objectTwo).length === 0) {
-        return objectOne;
+// exported for testing.
+// we basically walk the object graph and apply patches wherever
+// we can. we do a shallow copy of an object whenever there's a
+// patch to apply. object and writeCache are the same as they
+// are above. "applied" holds references from original objects
+// in the graph to their copies that have changes applied.
+export function applyWrites(object: any, writeCache: WeakMap<{}, {}>, applied: WeakMap<{}, {}>) {
+    const objectPatch = writeCache.get(object) || {};
+    let retObj;
+
+    // make sure we look at both the object and its patch when trying to recurse.
+    // the invariant is - whenever an object (or its patch) has a reference to
+    // another object, the patch should end up containing a reference to that
+    // object with all relevant changes applied!
+    const patched = Object.assign({}, object, objectPatch);
+    Object.getOwnPropertyNames(patched).forEach((property: string) => {
+        if (typeof patched[property] === "object") {
+            let nestedObj = patched[property];
+            if ("_immutableStagingWrappedObject" in nestedObj) {
+                // unwrap the object before recursing if we stored it
+                // as a staging proxy. writes to it will already be
+                // stored in writeCache so we don't need to do anything
+                // special to get those.
+                nestedObj = nestedObj._immutableStagingWrappedObject;
+            }
+
+            if (!(applied.has(nestedObj))) {
+                applyWrites(nestedObj, writeCache, applied);
+            }
+
+            if (patched[property] !== applied.get(nestedObj)) {
+                objectPatch[property] = applied.get(nestedObj);
+            }
+        }
+    });
+
+    if (Object.keys(objectPatch).length === 0) {
+        retObj = object;
+    } else {
+        retObj = Object.assign({}, object, objectPatch);
     }
 
-    const merged = Object.assign({}, objectOne);
-    Object.getOwnPropertyNames(objectTwo).forEach((mergeProp: string) => {
-        if (typeof objectOne[mergeProp] === "object" &&
-            typeof objectTwo[mergeProp] === "object") {
-            merged[mergeProp] = merge(objectOne[mergeProp], objectTwo[mergeProp]);
+    if (retObj._immutableStagingConvertArray) {
+        delete retObj._immutableStagingConvertArray;
+        retObj = Array.from(retObj);
+    }
 
-            if (merged[mergeProp]._immutableStagingConvertArray) {
-                delete merged[mergeProp]._immutableStagingConvertArray;
-                merged[mergeProp] = Array.from(merged[mergeProp]);
-            }
-        } else {
-            merged[mergeProp] = objectTwo[mergeProp];
-        }
-    });
-
-    return merged;
+    applied.set(object, retObj);
+    return retObj;
 }
+
