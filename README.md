@@ -77,9 +77,9 @@ const object = {key1: "I'm a key", array: [5], nested: {nested1: "I'm nested!"}}
 
 const newObject = applyUpdate(object, (staging) => {
   staging.array[1] = 10;
-  staging.push(20);
-  staging.push(30);
-  staging.fill(40, 1, 3);
+  staging.array.push(20);
+  staging.array.push(30);
+  staging.array.fill(40, 1, 3);
   alert(staging.array); // will be [5, 40, 40, 30]
   staging.array.filter((n) => n % 2 === 1) // will return [5]
 });
