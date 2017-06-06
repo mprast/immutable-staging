@@ -35,6 +35,8 @@ function buildStagingProxy(writeCache: WeakMap<{}, {}>, object: any): any {
             }
 
             if(property in (writeCache.get(target) || {})) {
+                // the ! here just tells Typescript that
+                // writeCache.get(target) isn't null
                 return writeCache.get(target)![property];
             } else if (typeof target[property] === "object") {
                 return buildStagingProxy(writeCache, target[property]);
@@ -69,6 +71,7 @@ function buildStagingProxy(writeCache: WeakMap<{}, {}>, object: any): any {
             if (!writeCache.has(target)) {
                 writeCache.set(target, {});
             }
+            // the ! here just tells Typescript that writeCache.get(target) isn't null.
             writeCache.get(target)![property] = value;
 
             if (Array.isArray(target)) {
