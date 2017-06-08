@@ -97,3 +97,6 @@ unwrap the callback and replace references to both `staging` and `newObject` wit
 Currently only supports plain objects - no `seamless-immutable` or `ImmutableJS` yet. If there's interest I could 
 look into it. Worth noting that although both libraries would perhaps improve safety and almost definitely improve 
 performance, we'd lose the easy reversability we get from using regular objects.
+
+# Implementation Details
+Get all the gory details [here](https://github.com/mprast/immutable-staging/wiki/The-Gory-Details)
