@@ -5,7 +5,7 @@ Library for updating immutable objects by mutating "staging objects". Good for d
 Immutable objects are valuable for a number of reasons, but it's often awkward to work with them, especially if they 
 are deeply nested. immutable-staging uses ES6 proxies to intercept writes to an object tree and apply them in an "immutable" style.
 The api will construct a staging object and pass it to a callback, and you can make your writes on the staging 
-object in a "mutable" style. Intuitively, this means that given:
+object directly. Intuitively, this means that given:
 
 ```javascript
 const object = {key1: "I'm a key", key2: 5, nested: {nested1: "I'm nested!"}};
