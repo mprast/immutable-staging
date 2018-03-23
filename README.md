@@ -1,5 +1,5 @@
 # immutable-staging
-Library for updating immutable objects by mutating "staging objects". Good for mutating deep state trees.
+Library for updating immutable objects by mutating "staging objects". Good for deep state trees.
 
 # Motivation
 Immutable objects are valuable for a number of reasons, but it's often awkward to work with them, especially if they 
